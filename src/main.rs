@@ -1,27 +1,31 @@
-mod handlers;
-
 use actix_cors::Cors;
-use actix_web::middleware::Logger;
-use actix_web::{http::header, App, HttpServer};
+use actix_web::http::header;
+use actix_web::{middleware, web, App, HttpServer};
+use rust_api::utility::router;
+use rust_api::utility::{db, stor::AppState};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    if std::env::var_os("RUST_LOG").is_none() {
-        std::env::set_var("RUST_LOG", "actix_web=info");
-    }
+    dotenvy::dotenv().ok();
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    env_logger::init();
-
-    //let todo_db = AppState::init();
-    //let app_data = web::Data::new(todo_db);
+    let pool = match db::initialize_db_pool().await {
+        Ok(pool) => {
+            println!("✅ Connection to database success!");
+            pool
+        }
+        Err(err) => {
+            println!("🔥 Failed to connect to database: {:?}", err);
+            std::process::exit(1);
+        }
+    };
 
     println!("🚀 Server started successfully");
 
     HttpServer::new(move || {
         let cors = Cors::default()
-            .allowed_origin("http://localhost:3000")
-            .allowed_origin("http://localhost:3000/")
-            .allowed_methods(vec!["GET", "POST"])
+            .allowed_origin("http://localhost:8000")
+            .allowed_methods(vec!["GET", "POST", "PATCH", "DELETE"])
             .allowed_headers(vec![
                 header::CONTENT_TYPE,
                 header::AUTHORIZATION,
@@ -29,12 +33,15 @@ async fn main() -> std::io::Result<()> {
             ])
             .supports_credentials();
         App::new()
-            //.app_data(app_data.clone())
-            .configure(handlers::config)
+            // add DB pool handle to app data; enables use of `web::Data<DbPool>` extractor
+            .app_data(web::Data::new(AppState { db: pool.clone() }))
+            // add request logger middleware
+            .wrap(middleware::Logger::default())
+            // add route handlers
             .wrap(cors)
-            .wrap(Logger::default())
+            .configure(router::config)
     })
-    .bind(("127.0.0.1", 8000))?
+    .bind(("127.0.0.1", 8080))?
     .run()
     .await
 }
