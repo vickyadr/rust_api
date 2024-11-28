@@ -1,6 +1,6 @@
 use crate::{
     receiver::r_list::ReceiverList,
-    utility::stor::{AppState, GenericResponse},
+    utility::stor::{AppState, GenericResponse, KeyValResponse},
 };
 use actix_web::{get, post, web, HttpResponse, Responder};
 use std::collections::HashMap;
@@ -14,21 +14,18 @@ pub async fn get_list(pool: web::Data<AppState>) -> impl Responder {
         .await;
 
     if query.is_ok() {
-        let response = &GenericResponse::<Vec<Content>> {
-            success: true,
-            message: "Content List".to_string(),
-            data: query.unwrap(),
-        };
-        return HttpResponse::Ok().json(response);
+        return HttpResponse::Ok().json(GenericResponse::<Content>::new(
+            query.unwrap(),
+            "Content List".to_string(),
+            true,
+        ));
     }
 
-    let response = &GenericResponse::<Vec<String>> {
-        success: false,
-        message: "No Content".to_string(),
-        data: Vec::new(),
-    };
-
-    HttpResponse::InternalServerError().json(response)
+    HttpResponse::InternalServerError().json(GenericResponse::<i8>::new(
+        Vec::new(),
+        "No Content".to_string(),
+        false,
+    ))
 }
 
 #[post("/list")]
@@ -39,58 +36,56 @@ pub async fn post_list(pool: web::Data<AppState>, body: web::Json<ReceiverList>)
         data.insert("title".to_string(), "Title cant be empty".to_string());
     }
 
-    if body.link.is_empty() {
-        data.insert("link".to_string(), "Link cant be empty".to_string());
+    if body.short.lt(&0) {
+        data.insert("short".to_string(), "Please select short type".to_string());
     }
 
     if data.len() > 0 {
-        let response = &GenericResponse::<HashMap<String, String>> {
-            success: false,
-            message: "Post error".to_string(),
-            data: data,
-        };
-        return HttpResponse::InternalServerError().json(response);
+        return HttpResponse::InternalServerError().json(KeyValResponse::<String, String>::new(
+            data,
+            "Post Error".to_string(),
+            false,
+        ));
     }
 
-    let query =
-        sqlx::query(r#"INSERT INTO contents (content_title, content_link, content_short, content_parrent, content_sub) VALUES (?, ?, ?, ?, ?)"#)
-            .bind(body.title.to_string())
-            .bind(body.link.to_string())
-            .bind(body.short)
-            .bind(body.parrent.to_owned().unwrap_or_default())
-            .bind(body.sub.to_owned().unwrap_or_default())
-            .execute(&pool.db)
-            .await
-            .map_err(|e: sqlx::Error| e.to_string());
+    use chrono::{DateTime, TimeZone, Utc};
+    let dt: DateTime<Utc> = Utc.with_ymd_and_hms(2015, 5, 15, 0, 0, 0).unwrap();
 
-    if let Err(e) = query {
+    let query =
+            sqlx::query(r#"INSERT INTO contents (content_title, content_link, content_short, content_parrent, content_sub, content_create_at) VALUES (?, ?, ?, ?, ?, ?)"#)
+                .bind(body.title.to_string())
+                .bind(body.link.to_owned().unwrap_or("".to_string()))
+                .bind(body.short)
+                .bind(body.parrent.to_owned().unwrap_or(0))
+                .bind(body.sub.to_owned().unwrap_or(0))
+                .bind(dt.timestamp())
+                .execute(&pool.db)
+                .await
+                .map_err(|e: sqlx::Error| e.to_string());
+
+    if let Err(_e) = query {
         //if e.contains("Duplicate entry") {
         //    return HttpResponse::BadRequest();
         //}
 
-        let response = &GenericResponse::<Vec<i32>> {
-            success: false,
-            message: "Insert data error".to_string(),
-            data: Vec::new(),
-        };
-
-        return HttpResponse::InternalServerError().json(response);
+        return HttpResponse::InternalServerError().json(GenericResponse::<i8>::new(
+            Vec::new(),
+            "Insert data error".to_string(),
+            false,
+        ));
     }
 
     if query.is_ok() {
-        let response = &GenericResponse::<Vec<i32>> {
-            success: true,
-            message: "Insert Success".to_string(),
-            data: Vec::new(),
-        };
-        return HttpResponse::Ok().json(response);
+        return HttpResponse::Ok().json(GenericResponse::<i8>::new(
+            Vec::new(),
+            "Insert Success".to_string(),
+            true,
+        ));
     }
 
-    let response = &GenericResponse::<Vec<i32>> {
-        success: false,
-        message: "Internal Error".to_string(),
-        data: Vec::new(),
-    };
-
-    return HttpResponse::InternalServerError().json(response);
+    return HttpResponse::InternalServerError().json(GenericResponse::<i8>::new(
+        Vec::new(),
+        "Internal Error".to_string(),
+        false,
+    ));
 }
