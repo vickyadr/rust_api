@@ -1,4 +1,4 @@
-Actix Web Template to build RestApi using Postgresql and Sqlx.
+Actix Web RestApi template using Postgresql and Sqlx.
 
 Small Note :
 1. "handler" folder for API response
